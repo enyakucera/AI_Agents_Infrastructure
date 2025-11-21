@@ -21,3 +21,5 @@ services:
       - WHATSAPP_URL=http://whatsapp:5004
     networks:
       - ai-agents-network
+    ports:
+      - "5005:5005"
