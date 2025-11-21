@@ -1,0 +1,75 @@
+name: Deploy to Linux Server
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:  # Umožňuje manuální spuštění
+
+jobs:
+  deploy:
+    runs-on: self-hosted  # Použije váš Linux runner
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Create .env file from secrets
+        run: |
+          cat > .env << EOF
+          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN_API }}
+          SMTP_SERVER=${{ secrets.SMTP_SERVER }}
+          SMTP_PORT=${{ secrets.SMTP_PORT }}
+          EMAIL_SENDER=${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD=${{ secrets.EMAIL_PASSWORD }}
+          TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_WHATSAPP_NUMBER=${{ secrets.TWILIO_WHATSAPP_NUMBER }}
+          EOF
+      
+      - name: Create Docker network if not exists
+        run: |
+          docker network inspect ai-agents-network >/dev/null 2>&1 || \
+          docker network create ai-agents-network
+      
+      - name: Deploy infrastructure services
+        run: |
+          docker-compose -f docker-compose.infrastructure.yml pull
+          docker-compose -f docker-compose.infrastructure.yml up -d --build
+      
+      - name: Wait for services to be healthy
+        run: |
+          echo "Waiting for services to start..."
+          sleep 10
+          
+          # Check health endpoints
+          max_attempts=30
+          attempt=0
+          
+          while [ $attempt -lt $max_attempts ]; do
+            if curl -f http://localhost:5001/health && \
+               curl -f http://localhost:5002/health && \
+               curl -f http://localhost:5003/health && \
+               curl -f http://localhost:5004/health; then
+              echo "All services are healthy!"
+              break
+            fi
+            
+            attempt=$((attempt + 1))
+            echo "Attempt $attempt/$max_attempts - waiting for services..."
+            sleep 5
+          done
+          
+          if [ $attempt -eq $max_attempts ]; then
+            echo "Services failed to become healthy"
+            docker-compose -f docker-compose.infrastructure.yml logs
+            exit 1
+          fi
+      
+      - name: Show running containers
+        run: docker ps
+      
+      - name: Show service logs (last 50 lines)
+        if: always()
+        run: docker-compose -f docker-compose.infrastructure.yml logs --tail=50

@@ -292,6 +292,96 @@ Ujistěte se, že infrastruktura běží:
 docker-compose -f docker-compose.infrastructure.yml ps
 ```
 
+## 🚀 Deployment na Linux server (GitHub Actions)
+
+### Nastavení GitHub Runner
+
+1. **Vytvořte GitHub repozitář** a pushnete kód:
+```bash
+git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
+git push -u origin master
+```
+
+2. **Nainstalujte GitHub Actions Runner na Linux serveru:**
+
+```bash
+# Stáhněte runner
+mkdir actions-runner && cd actions-runner
+curl -o actions-runner-linux-x64-2.311.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.311.0/actions-runner-linux-x64-2.311.0.tar.gz
+tar xzf ./actions-runner-linux-x64-2.311.0.tar.gz
+
+# Konfigurujte runner (použijte token z GitHub Settings > Actions > Runners > New self-hosted runner)
+./config.sh --url https://github.com/YOUR_USERNAME/YOUR_REPO --token YOUR_TOKEN
+
+# Spusťte runner jako službu
+sudo ./svc.sh install
+sudo ./svc.sh start
+```
+
+3. **Nastavte GitHub Secrets** v repozitáři (Settings > Secrets and variables > Actions):
+   - `GITHUB_TOKEN_API` - váš GitHub token pro Models API
+   - `SMTP_SERVER` - SMTP server
+   - `SMTP_PORT` - SMTP port
+   - `EMAIL_SENDER` - odesílatel e-mailů
+   - `EMAIL_PASSWORD` - heslo pro e-mail
+   - `TWILIO_ACCOUNT_SID` - Twilio Account SID
+   - `TWILIO_AUTH_TOKEN` - Twilio Auth Token
+   - `TWILIO_WHATSAPP_NUMBER` - Twilio WhatsApp číslo
+
+4. **Push triggeru deployment:**
+```bash
+git push origin master
+```
+
+Workflow automaticky:
+- Vytvoří `.env` soubor ze secrets
+- Vytvoří Docker síť
+- Nasadí všechny služby
+- Zkontroluje zdraví služeb
+- Zobrazí logy
+
+### Manuální správa na serveru
+
+Po naklonování repozitáře na serveru můžete používat skripty:
+
+```bash
+# Spustit infrastrukturu
+chmod +x scripts/*.sh
+./scripts/start-infrastructure.sh
+
+# Zobrazit logy
+./scripts/logs-infrastructure.sh
+
+# Restartovat služby
+./scripts/restart-infrastructure.sh
+
+# Zastavit infrastrukturu
+./scripts/stop-infrastructure.sh
+
+# Update z Gitu a rebuild
+./scripts/update-infrastructure.sh
+```
+
+### Monitoring na serveru
+
+```bash
+# Status kontejnerů
+docker ps
+
+# Logy konkrétní služby
+docker logs service-scraper -f
+docker logs service-ai-analyzer -f
+
+# Využití zdrojů
+docker stats
+
+# Health check
+curl http://localhost:5001/health
+curl http://localhost:5002/health
+curl http://localhost:5003/health
+curl http://localhost:5004/health
+```
+
 ## Získání tokenů
 
 ### GitHub Token
