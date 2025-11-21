@@ -17,7 +17,7 @@ SMTP_PORT=int(os.getenv("SMTP_PORT", 587))
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+COPILOT_GITHUB_TOKEN = os.getenv("COPILOT_GITHUB_TOKEN")
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_WHATSAPP_NUMBER = os.getenv("TWILIO_WHATSAPP_NUMBER")
@@ -26,7 +26,7 @@ USER_WHATSAPP_NUMBER = os.getenv("USER_WHATSAPP_NUMBER")
 # Inicializace GitHub Models klienta
 client = OpenAI(
     base_url="https://models.inference.ai.azure.com",
-    api_key=GITHUB_TOKEN
+    api_key=COPILOT_GITHUB_TOKEN
 )
 
 # Funkce pro scraping z více webů

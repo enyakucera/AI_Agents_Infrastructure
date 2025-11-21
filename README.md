@@ -43,7 +43,7 @@ Vytvořte `.env` soubor v root složce s následující konfigurací:
 
 ```bash
 # GitHub Models API
-GITHUB_TOKEN=your_github_token
+COPILOT_GITHUB_TOKEN=your_github_token
 
 # Email konfigurace
 SMTP_SERVER=smtp.gmail.com
@@ -319,7 +319,7 @@ sudo ./svc.sh start
 ```
 
 3. **Nastavte GitHub Secrets** v repozitáři (Settings > Secrets and variables > Actions):
-   - `GITHUB_TOKEN_API` - váš GitHub token pro Models API
+   - `COPILOT_GITHUB_TOKEN` - váš GitHub token pro Models API
    - `SMTP_SERVER` - SMTP server
    - `SMTP_PORT` - SMTP port
    - `EMAIL_SENDER` - odesílatel e-mailů

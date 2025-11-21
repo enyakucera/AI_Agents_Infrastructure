@@ -5,10 +5,10 @@ import os
 app = Flask(__name__)
 
 # Inicializace GitHub Models klienta
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+COPILOT_GITHUB_TOKEN = os.getenv("COPILOT_GITHUB_TOKEN")
 client = OpenAI(
     base_url="https://models.inference.ai.azure.com",
-    api_key=GITHUB_TOKEN
+    api_key=COPILOT_GITHUB_TOKEN
 )
 
 @app.route('/health', methods=['GET'])

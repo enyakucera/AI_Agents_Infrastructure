@@ -26,7 +26,7 @@ services:
     container_name: service-ai-analyzer
     restart: unless-stopped
     environment:
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - COPILOT_GITHUB_TOKEN=${COPILOT_GITHUB_TOKEN}
     networks:
       - ai-agents-network
     ports:
