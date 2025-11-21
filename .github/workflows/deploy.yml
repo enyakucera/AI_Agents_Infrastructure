@@ -44,8 +44,8 @@ jobs:
       - name: Deploy infrastructure services
         working-directory: /opt/ai_agents_infrastructure
         run: |
-          docker compose -f docker compose.infrastructure.yml pull
-          docker compose -f docker compose.infrastructure.yml up -d --build
+          docker compose -f docker-compose.infrastructure.yml pull
+          docker compose -f docker-compose.infrastructure.yml up -d --build
       
       - name: Wait for services to be healthy
         run: |
@@ -73,7 +73,7 @@ jobs:
           if [ $attempt -eq $max_attempts ]; then
             echo "Services failed to become healthy"
             cd /opt/ai_agents_infrastructure
-            docker compose -f docker compose.infrastructure.yml logs
+            docker compose -f docker-compose.infrastructure.yml logs
             exit 1
           fi
       
@@ -84,4 +84,4 @@ jobs:
         if: always()
         run: |
           cd /opt/ai_agents_infrastructure
-          docker compose -f docker compose.infrastructure.yml logs --tail=50
+          docker compose -f docker-compose.infrastructure.yml logs --tail=50
