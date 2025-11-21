@@ -327,6 +327,7 @@ sudo ./svc.sh start
    - `TWILIO_ACCOUNT_SID` - Twilio Account SID
    - `TWILIO_AUTH_TOKEN` - Twilio Auth Token
    - `TWILIO_WHATSAPP_NUMBER` - Twilio WhatsApp číslo
+   - `USER_WHATSAPP_NUMBER` - vaše WhatsApp číslo pro příjem zpráv
 
 4. **Push triggeru deployment:**
 ```bash
