@@ -7,6 +7,9 @@ on:
       - master
   workflow_dispatch:  # Umožňuje manuální spuštění
 
+env:
+  DEPLOY_PATH: /opt/ai_agents_infrastructure
+
 jobs:
   deploy:
     runs-on: self-hosted  # Použije váš Linux runner
@@ -14,8 +17,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          path: ${{ env.DEPLOY_PATH }}
       
       - name: Create .env file from secrets
+        working-directory: ${{ env.DEPLOY_PATH }}
         run: |
           cat > .env << EOF
           COPILOT_GITHUB_TOKEN=${{ secrets.COPILOT_GITHUB_TOKEN }}
@@ -30,16 +36,19 @@ jobs:
           EOF
       
       - name: Create Docker network if not exists
+        working-directory: ${{ env.DEPLOY_PATH }}
         run: |
           docker network inspect ai-agents-network >/dev/null 2>&1 || \
           docker network create ai-agents-network
       
       - name: Deploy infrastructure services
+        working-directory: ${{ env.DEPLOY_PATH }}
         run: |
           docker-compose -f docker-compose.infrastructure.yml pull
           docker-compose -f docker-compose.infrastructure.yml up -d --build
       
       - name: Wait for services to be healthy
+        working-directory: ${{ env.DEPLOY_PATH }}
         run: |
           echo "Waiting for services to start..."
           sleep 10
@@ -73,4 +82,5 @@ jobs:
       
       - name: Show service logs (last 50 lines)
         if: always()
+        working-directory: ${{ env.DEPLOY_PATH }}
         run: docker-compose -f docker-compose.infrastructure.yml logs --tail=50
