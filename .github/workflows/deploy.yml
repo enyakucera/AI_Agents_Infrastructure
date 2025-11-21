@@ -77,6 +77,21 @@ jobs:
             exit 1
           fi
       
+      - name: Create agent .env file with additional variables
+        run: |
+          cp /opt/ai_agents_infrastructure/.env /opt/ai_agents_infrastructure/agents/real-estate/.env
+          cat >> /opt/ai_agents_infrastructure/agents/real-estate/.env << EOF
+          LOCATION=${{ secrets.LOCATION }}
+          MIN_AREA=${{ secrets.MIN_AREA }}
+          INTERVAL=${{ secrets.INTERVAL }}
+          EMAIL_RECEIVER=${{ secrets.EMAIL_RECEIVER }}
+          EOF
+      
+      - name: Deploy real-estate agent
+        working-directory: /opt/ai_agents_infrastructure/agents/real-estate
+        run: |
+          docker compose up -d --build
+      
       - name: Show running containers
         run: docker ps
       
@@ -85,3 +100,9 @@ jobs:
         run: |
           cd /opt/ai_agents_infrastructure
           docker compose -f docker-compose.infrastructure.yml logs --tail=50
+          
+      - name: Show agent logs (last 50 lines)
+        if: always()
+        run: |
+          cd /opt/ai_agents_infrastructure/agents/real-estate
+          docker compose logs --tail=50
