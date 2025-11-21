@@ -7,9 +7,6 @@ on:
       - master
   workflow_dispatch:  # Umožňuje manuální spuštění
 
-env:
-  DEPLOY_PATH: /opt/ai_agents_infrastructure
-
 jobs:
   deploy:
     runs-on: self-hosted  # Použije váš Linux runner
@@ -17,13 +14,22 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          path: ${{ env.DEPLOY_PATH }}
+      
+      - name: Create deployment directory
+        run: |
+          sudo mkdir -p /opt/ai_agents_infrastructure
+          sudo chown $USER:$USER /opt/ai_agents_infrastructure
+      
+      - name: Sync files to deployment directory
+        run: |
+          rsync -av --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            ./ /opt/ai_agents_infrastructure/
       
       - name: Create .env file from secrets
-        working-directory: ${{ env.DEPLOY_PATH }}
         run: |
-          cat > .env << EOF
+          cat > /opt/ai_agents_infrastructure/.env << EOF
           COPILOT_GITHUB_TOKEN=${{ secrets.COPILOT_GITHUB_TOKEN }}
           SMTP_SERVER=${{ secrets.SMTP_SERVER }}
           SMTP_PORT=${{ secrets.SMTP_PORT }}
@@ -36,19 +42,17 @@ jobs:
           EOF
       
       - name: Create Docker network if not exists
-        working-directory: ${{ env.DEPLOY_PATH }}
         run: |
           docker network inspect ai-agents-network >/dev/null 2>&1 || \
           docker network create ai-agents-network
       
       - name: Deploy infrastructure services
-        working-directory: ${{ env.DEPLOY_PATH }}
+        working-directory: /opt/ai_agents_infrastructure
         run: |
           docker-compose -f docker-compose.infrastructure.yml pull
           docker-compose -f docker-compose.infrastructure.yml up -d --build
       
       - name: Wait for services to be healthy
-        working-directory: ${{ env.DEPLOY_PATH }}
         run: |
           echo "Waiting for services to start..."
           sleep 10
@@ -73,6 +77,7 @@ jobs:
           
           if [ $attempt -eq $max_attempts ]; then
             echo "Services failed to become healthy"
+            cd /opt/ai_agents_infrastructure
             docker-compose -f docker-compose.infrastructure.yml logs
             exit 1
           fi
@@ -82,5 +87,6 @@ jobs:
       
       - name: Show service logs (last 50 lines)
         if: always()
-        working-directory: ${{ env.DEPLOY_PATH }}
-        run: docker-compose -f docker-compose.infrastructure.yml logs --tail=50
+        run: |
+          cd /opt/ai_agents_infrastructure
+          docker-compose -f docker-compose.infrastructure.yml logs --tail=50
