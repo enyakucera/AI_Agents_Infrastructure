@@ -1,0 +1,30 @@
+version: '3.8'
+
+networks:
+  ai-agents-network:
+    external: true
+
+services:
+  real-estate-agent:
+    build: .
+    container_name: agent-real-estate
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOCATION=${LOCATION}
+      - MIN_AREA=${MIN_AREA}
+      - INTERVAL=${INTERVAL}
+      - EMAIL_RECEIVER=${EMAIL_RECEIVER}
+      - USER_WHATSAPP_NUMBER=${USER_WHATSAPP_NUMBER}
+      # URL mikroslužeb (názvy kontejnerů v Docker síti)
+      - SCRAPER_URL=http://scraper:5001
+      - AI_ANALYZER_URL=http://ai-analyzer:5002
+      - EMAIL_URL=http://email:5003
+      - WHATSAPP_URL=http://whatsapp:5004
+    networks:
+      - ai-agents-network
+    depends_on:
+      - scraper
+      - ai-analyzer
+      - email
+      - whatsapp

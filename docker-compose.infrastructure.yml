@@ -1,0 +1,77 @@
+version: '3.8'
+
+networks:
+  ai-agents-network:
+    driver: bridge
+
+services:
+  # Web Scraper Service
+  scraper:
+    build: ./services/scraper
+    container_name: service-scraper
+    restart: unless-stopped
+    networks:
+      - ai-agents-network
+    ports:
+      - "5001:5001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # AI Analyzer Service (GitHub Models)
+  ai-analyzer:
+    build: ./services/ai-analyzer
+    container_name: service-ai-analyzer
+    restart: unless-stopped
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    networks:
+      - ai-agents-network
+    ports:
+      - "5002:5002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Email Service
+  email:
+    build: ./services/email
+    container_name: service-email
+    restart: unless-stopped
+    environment:
+      - SMTP_SERVER=${SMTP_SERVER}
+      - SMTP_PORT=${SMTP_PORT}
+      - EMAIL_SENDER=${EMAIL_SENDER}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+    networks:
+      - ai-agents-network
+    ports:
+      - "5003:5003"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # WhatsApp Service (Twilio)
+  whatsapp:
+    build: ./services/whatsapp
+    container_name: service-whatsapp
+    restart: unless-stopped
+    environment:
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_WHATSAPP_NUMBER=${TWILIO_WHATSAPP_NUMBER}
+    networks:
+      - ai-agents-network
+    ports:
+      - "5004:5004"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

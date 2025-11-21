@@ -1,0 +1,22 @@
+
+services:
+  agent:
+    build: .
+    container_name: real_estate_agent_copilot
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOCATION=${LOCATION}
+      - MIN_AREA=${MIN_AREA}
+      - SMTP_SERVER=${SMTP_SERVER}
+      - SMTP_PORT=${SMTP_PORT}
+      - INTERVAL=${INTERVAL}
+      - EMAIL_SENDER=${EMAIL_SENDER}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - EMAIL_RECEIVER=${EMAIL_RECEIVER}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_WHATSAPP_NUMBER=${TWILIO_WHATSAPP_NUMBER}
+      - USER_WHATSAPP_NUMBER=${USER_WHATSAPP_NUMBER}
+    command: python -u real_estate_agent.py
