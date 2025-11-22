@@ -67,6 +67,21 @@ def update_config(location=None, min_area=None, interval=None):
     except Exception as e:
         print(f"Chyba: {e}")
 
+def send_prompt(message):
+    try:
+        response = requests.post(f"{AGENT_URL}/prompt", json={"message": message})
+        if response.status_code == 200:
+            data = response.json()
+            print(f"Agent: {data.get('message')}")
+            if "intent" in data:
+                # Debug info (volitelné)
+                # print(f"Debug (Intent): {data['intent']}")
+                pass
+        else:
+            print(f"Chyba: {response.json().get('error', 'Neznámá chyba')}")
+    except Exception as e:
+        print(f"Chyba: {e}")
+
 def main():
     parser = argparse.ArgumentParser(description="CLI pro ovládání Real Estate Agenta")
     subparsers = parser.add_subparsers(dest="command", help="Příkaz")
@@ -82,6 +97,10 @@ def main():
 
     # Příkaz run-now
     subparsers.add_parser("run-now", help="Okamžitě spustit vyhledávání")
+
+    # Příkaz prompt (chat)
+    prompt_parser = subparsers.add_parser("prompt", help="Poslat agentovi instrukci v přirozeném jazyce")
+    prompt_parser.add_argument("message", help="Zpráva pro agenta (v uvozovkách)")
 
     # Příkaz config
     config_parser = subparsers.add_parser("config", help="Změnit konfiguraci")
@@ -99,6 +118,8 @@ def main():
         stop_agent()
     elif args.command == "run-now":
         run_now()
+    elif args.command == "prompt":
+        send_prompt(args.message)
     elif args.command == "config":
         update_config(args.location, args.min_area, args.interval)
     else:

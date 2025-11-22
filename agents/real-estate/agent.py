@@ -78,16 +78,103 @@ def run_now():
     threading.Thread(target=run_cycle).start()
     return jsonify({"message": "Vyhledávání spuštěno na pozadí."})
 
+@app.route('/prompt', methods=['POST'])
+def handle_prompt():
+    """Zpracování přirozeného jazyka od uživatele"""
+    data = request.get_json()
+    user_message = data.get("message", "")
+    
+    if not user_message:
+        return jsonify({"error": "Prázdná zpráva"}), 400
+        
+    # 1. Interpretace záměru pomocí AI
+    intent = interpret_intent(user_message)
+    
+    if not intent:
+        return jsonify({"message": "Nerozumím příkazu."}), 400
+        
+    command = intent.get("command")
+    params = intent.get("parameters", {})
+    
+    response_msg = ""
+    
+    # 2. Vykonání akce
+    if command == "UPDATE_CONFIG":
+        if "location" in params:
+            config["LOCATION"] = params["location"]
+        if "min_area" in params:
+            config["MIN_AREA"] = int(params["min_area"])
+        if "interval" in params:
+            config["INTERVAL"] = int(params["interval"])
+        response_msg = f"Konfigurace aktualizována: {config['LOCATION']}, min {config['MIN_AREA']}m2."
+        
+    elif command == "RUN_ONCE":
+        # Spustit jedno hledání s parametry (nebo defaultními)
+        threading.Thread(target=run_cycle, kwargs={"overrides": params}).start()
+        response_msg = f"Spouštím jednorázové hledání pro {params.get('location', config['LOCATION'])}."
+        
+    elif command == "START":
+        config["RUNNING"] = True
+        response_msg = "Agent byl spuštěn."
+        
+    elif command == "STOP":
+        config["RUNNING"] = False
+        response_msg = "Agent byl pozastaven."
+        
+    else:
+        response_msg = f"Neznámý příkaz: {command}"
+        
+    return jsonify({"message": response_msg, "intent": intent})
+
+def interpret_intent(user_message):
+    """Převod přirozeného jazyka na strukturovaný příkaz pomocí AI"""
+    system_prompt = """Jsi řídicí systém pro realitního agenta. Tvým úkolem je převést přání uživatele na JSON příkaz.
+Dostupné příkazy:
+- UPDATE_CONFIG: Trvalá změna nastavení (lokalita, plocha, interval).
+- RUN_ONCE: Jednorázové spuštění hledání (např. "zkus najít...", "podívej se na...").
+- START: Spustit agenta.
+- STOP: Zastavit agenta.
+
+Parametry: location (string), min_area (int), interval (int).
+
+Příklad 1: "Hledej v Brně byty od 60m2" -> {"command": "UPDATE_CONFIG", "parameters": {"location": "Brno", "min_area": 60}}
+Příklad 2: "Zkus teď najít něco v Praze" -> {"command": "RUN_ONCE", "parameters": {"location": "Praha"}}
+Příklad 3: "Zastav se" -> {"command": "STOP", "parameters": {}}
+
+Vrať POUZE validní JSON bez dalšího textu."""
+
+    try:
+        response = requests.post(
+            f"{AI_ANALYZER_URL}/analyze",
+            json={
+                "prompt": f"Uživatel říká: '{user_message}'",
+                "context": system_prompt,
+                "model": "gpt-4o",
+                "temperature": 0.1
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            content = response.json().get("analysis", "")
+            # Očištění od markdownu, pokud tam je
+            content = content.replace("```json", "").replace("```", "").strip()
+            import json
+            return json.loads(content)
+    except Exception as e:
+        print(f"Chyba při interpretaci záměru: {e}")
+        return None
+
 def run_api_server():
     app.run(host='0.0.0.0', port=5005, debug=False, use_reloader=False)
 
-def scrape_listings():
-    """Volá scraper service pro získání nabídek"""
+def scrape_listings_with_params(location):
+    """Volá scraper service pro získání nabídek (s parametrem)"""
     urls = [
-        f"https://www.sreality.cz/hledani/pronajem/byty?region={config['LOCATION']}",
-        f"https://www.bezrealitky.cz/vypis/nabidka-pronajem/byt/{config['LOCATION']}",
-        f"https://reality.idnes.cz/s/pronajem/byty/{config['LOCATION']}/",
-        f"https://reality.bazos.cz/inzeraty/{config['LOCATION']}-byt/"
+        f"https://www.sreality.cz/hledani/pronajem/byty?region={location}",
+        f"https://www.bezrealitky.cz/vypis/nabidka-pronajem/byt/{location}",
+        f"https://reality.idnes.cz/s/pronajem/byty/{location}/",
+        f"https://reality.bazos.cz/inzeraty/{location}-byt/"
     ]
     
     try:
@@ -110,8 +197,11 @@ def scrape_listings():
         print(f"Error calling scraper service: {e}")
         return []
 
-def analyze_listings(listings):
-    """Volá AI analyzer service pro analýzu nabídek"""
+def scrape_listings():
+    return scrape_listings_with_params(config['LOCATION'])
+
+def analyze_listings_with_params(listings, location, min_area):
+    """Volá AI analyzer service pro analýzu nabídek (s parametry)"""
     if not listings:
         return "Žádné nabídky k analýze."
     
@@ -121,12 +211,12 @@ def analyze_listings(listings):
         for item in listings[:50]  # omezit na 50 nabídek
     ])
     
-    prompt = f"""Vyber nejlepší nabídky pronájmu bytů v {config['LOCATION']} z následujícího seznamu:
+    prompt = f"""Vyber nejlepší nabídky pronájmu bytů v {location} z následujícího seznamu:
 
 {listings_text}
 
 Kritéria: 
-- Plocha alespoň {config['MIN_AREA']} m²
+- Plocha alespoň {min_area} m²
 - Vhodné pro dlouhodobý pronájem
 - Přijatelná cena
 
@@ -153,6 +243,9 @@ Vrať stručný seznam TOP 5 nejlepších nabídek s odůvodněním."""
     except Exception as e:
         print(f"Error calling AI analyzer service: {e}")
         return f"Nalezeno {len(listings)} nabídek:\n\n{listings_text[:1000]}"
+
+def analyze_listings(listings):
+    return analyze_listings_with_params(listings, config['LOCATION'], config['MIN_AREA'])
 
 def send_email(subject, body):
     """Volá email service pro odeslání e-mailu"""
@@ -193,28 +286,33 @@ def send_whatsapp_message(body):
     except Exception as e:
         print(f"Error calling WhatsApp service: {e}")
 
-def run_cycle():
+def run_cycle(overrides=None):
     """Jeden cyklus vyhledávání"""
+    # Použít overrides nebo globální config
+    current_location = overrides.get("location", config["LOCATION"]) if overrides else config["LOCATION"]
+    current_min_area = int(overrides.get("min_area", config["MIN_AREA"])) if overrides and "min_area" in overrides else config["MIN_AREA"]
+    
     print("\n" + "="*50)
-    print(f"Spouštím cyklus vyhledávání pro {config['LOCATION']} (min {config['MIN_AREA']} m²)...")
+    print(f"Spouštím cyklus vyhledávání pro {current_location} (min {current_min_area} m²)...")
     print("="*50)
     
     # Krok 1: Scraping
     print("1. Scrapování nabídek...")
-    listings = scrape_listings()
+    # Dočasná úprava scrape_listings pro podporu parametrů
+    listings = scrape_listings_with_params(current_location)
     
     if listings:
         print(f"✓ Nalezeno {len(listings)} nabídek.")
         
         # Krok 2: AI Analýza
         print("2. Analýza pomocí AI...")
-        analysis = analyze_listings(listings)
+        analysis = analyze_listings_with_params(listings, current_location, current_min_area)
         print(f"✓ Analýza dokončena.")
         
         # Krok 3: Odeslání e-mailu
         print("3. Odesílání e-mailu...")
         send_email(
-            subject=f"Aktuální nabídky pronájmu v {config['LOCATION']}",
+            subject=f"Aktuální nabídky pronájmu v {current_location}",
             body=analysis
         )
         
