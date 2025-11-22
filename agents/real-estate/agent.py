@@ -91,7 +91,8 @@ def handle_prompt():
     intent = interpret_intent(user_message)
     
     if not intent:
-        return jsonify({"message": "Nerozumím příkazu."}), 400
+        # Fallback: Pokud se nepodaří zjistit záměr, předpokládáme dotaz na analýzu
+        intent = {"command": "ANALYZE_WITH_PROMPT", "parameters": {}}
         
     command = intent.get("command")
     params = intent.get("parameters", {})
@@ -109,9 +110,9 @@ def handle_prompt():
         response_msg = f"Konfigurace aktualizována: {config['LOCATION']}, min {config['MIN_AREA']}m2."
         
     elif command == "RUN_ONCE":
-        # Spustit jedno hledání s parametry (nebo defaultními)
+        # Spustit jedno hledání s parametry (nebo defaultními) - standardní cyklus s emailem
         threading.Thread(target=run_cycle, kwargs={"overrides": params}).start()
-        response_msg = f"Spouštím jednorázové hledání pro {params.get('location', config['LOCATION'])}."
+        response_msg = f"Spouštím jednorázové hledání pro {params.get('location', config['LOCATION'])} (výsledky přijdou e-mailem)."
         
     elif command == "START":
         config["RUNNING"] = True
@@ -120,6 +121,19 @@ def handle_prompt():
     elif command == "STOP":
         config["RUNNING"] = False
         response_msg = "Agent byl pozastaven."
+
+    elif command == "ANALYZE_WITH_PROMPT":
+        # Synchronní zpracování dotazu - vrátí odpověď přímo sem
+        loc = params.get("location", config["LOCATION"])
+        
+        # Získání dat
+        listings = scrape_listings_with_params(loc)
+        
+        if not listings:
+            response_msg = f"Pro lokalitu {loc} nebyly nalezeny žádné nabídky, takže nemohu odpovědět na dotaz."
+        else:
+            # AI Analýza s dotazem uživatele
+            response_msg = analyze_custom_query(listings, user_message, loc)
         
     else:
         response_msg = f"Neznámý příkaz: {command}"
@@ -131,15 +145,17 @@ def interpret_intent(user_message):
     system_prompt = """Jsi řídicí systém pro realitního agenta. Tvým úkolem je převést přání uživatele na JSON příkaz.
 Dostupné příkazy:
 - UPDATE_CONFIG: Trvalá změna nastavení (lokalita, plocha, interval).
-- RUN_ONCE: Jednorázové spuštění hledání (např. "zkus najít...", "podívej se na...").
+- RUN_ONCE: Jednorázové spuštění standardního cyklu (např. "pošli mi nabídky", "udělej sken").
 - START: Spustit agenta.
 - STOP: Zastavit agenta.
+- ANALYZE_WITH_PROMPT: Uživatel se ptá na informace o trhu, chce shrnutí, nebo dává specifický pokyn pro analýzu dat (např. "jak vypadá trh?", "vypiš mi...", "jsou tam nějaké levné byty?", "co si myslíš o...").
 
 Parametry: location (string), min_area (int), interval (int).
 
 Příklad 1: "Hledej v Brně byty od 60m2" -> {"command": "UPDATE_CONFIG", "parameters": {"location": "Brno", "min_area": 60}}
-Příklad 2: "Zkus teď najít něco v Praze" -> {"command": "RUN_ONCE", "parameters": {"location": "Praha"}}
-Příklad 3: "Zastav se" -> {"command": "STOP", "parameters": {}}
+Příklad 2: "Pošli mi teď nabídky z Prahy" -> {"command": "RUN_ONCE", "parameters": {"location": "Praha"}}
+Příklad 3: "Vypiš mi krátké shrnutí jak vypadá trh" -> {"command": "ANALYZE_WITH_PROMPT", "parameters": {}}
+Příklad 4: "Jsou v Ostravě nějaké byty do 15000?" -> {"command": "ANALYZE_WITH_PROMPT", "parameters": {"location": "Ostrava"}}
 
 Vrať POUZE validní JSON bez dalšího textu."""
 
@@ -164,6 +180,42 @@ Vrať POUZE validní JSON bez dalšího textu."""
     except Exception as e:
         print(f"Chyba při interpretaci záměru: {e}")
         return None
+
+def analyze_custom_query(listings, user_query, location):
+    """Analýza nabídek na základě specifického dotazu uživatele"""
+    # Připravit text nabídek
+    listings_text = "\n".join([
+        f"- {item.get('text', 'N/A')} [{item.get('url', '')}]" 
+        for item in listings[:50]
+    ])
+    
+    prompt = f"""Mám následující seznam nabídek pronájmu bytů v lokalitě {location}:
+
+{listings_text}
+
+Uživatel se ptá: "{user_query}"
+
+Odpověz uživateli přímo na jeho otázku na základě poskytnutých dat. Buď stručný a věcný."""
+
+    try:
+        response = requests.post(
+            f"{AI_ANALYZER_URL}/analyze",
+            json={
+                "prompt": prompt,
+                "model": "gpt-4o",
+                "temperature": 0.2,
+                "max_tokens": 1000
+            },
+            timeout=120
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("analysis", "Analýza selhala.")
+        else:
+            return f"Chyba AI služby: {response.status_code}"
+    except Exception as e:
+        return f"Chyba při volání AI služby: {e}"
 
 def run_api_server():
     app.run(host='0.0.0.0', port=5005, debug=False, use_reloader=False)
