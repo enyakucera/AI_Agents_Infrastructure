@@ -91,8 +91,8 @@ def handle_prompt():
     intent = interpret_intent(user_message)
     
     if not intent:
-        # Fallback: Pokud se nepodaří zjistit záměr, předpokládáme dotaz na analýzu
-        intent = {"command": "ANALYZE_WITH_PROMPT", "parameters": {}}
+        # Fallback: Pokud se nepodaří zjistit záměr, považujeme to za chat
+        intent = {"command": "CHAT", "parameters": {}}
         
     command = intent.get("command")
     params = intent.get("parameters", {})
@@ -109,11 +109,6 @@ def handle_prompt():
             config["INTERVAL"] = int(params["interval"])
         response_msg = f"Konfigurace aktualizována: {config['LOCATION']}, min {config['MIN_AREA']}m2."
         
-    elif command == "RUN_ONCE":
-        # Spustit jedno hledání s parametry (nebo defaultními) - standardní cyklus s emailem
-        threading.Thread(target=run_cycle, kwargs={"overrides": params}).start()
-        response_msg = f"Spouštím jednorázové hledání pro {params.get('location', config['LOCATION'])} (výsledky přijdou e-mailem)."
-        
     elif command == "START":
         config["RUNNING"] = True
         response_msg = "Agent byl spuštěn."
@@ -122,18 +117,22 @@ def handle_prompt():
         config["RUNNING"] = False
         response_msg = "Agent byl pozastaven."
 
-    elif command == "ANALYZE_WITH_PROMPT":
-        # Synchronní zpracování dotazu - vrátí odpověď přímo sem
+    elif command == "SEARCH":
+        # Uživatel chce explicitně hledat -> Scraping + Analýza
         loc = params.get("location", config["LOCATION"])
         
         # Získání dat
         listings = scrape_listings_with_params(loc)
         
         if not listings:
-            response_msg = f"Pro lokalitu {loc} nebyly nalezeny žádné nabídky, takže nemohu odpovědět na dotaz."
+            response_msg = f"Pro lokalitu {loc} nebyly nalezeny žádné nabídky."
         else:
             # AI Analýza s dotazem uživatele
             response_msg = analyze_custom_query(listings, user_message, loc)
+            
+    elif command == "CHAT":
+        # Běžná konverzace bez scrapingu
+        response_msg = chat_with_llm(user_message)
         
     else:
         response_msg = f"Neznámý příkaz: {command}"
@@ -142,20 +141,21 @@ def handle_prompt():
 
 def interpret_intent(user_message):
     """Převod přirozeného jazyka na strukturovaný příkaz pomocí AI"""
-    system_prompt = """Jsi řídicí systém pro realitního agenta. Tvým úkolem je převést přání uživatele na JSON příkaz.
+    system_prompt = """Jsi řídicí systém pro realitního agenta. Tvým úkolem je klasifikovat vstup uživatele.
 Dostupné příkazy:
-- UPDATE_CONFIG: Trvalá změna nastavení (lokalita, plocha, interval).
-- RUN_ONCE: Jednorázové spuštění standardního cyklu (např. "pošli mi nabídky", "udělej sken").
+- UPDATE_CONFIG: Uživatel chce TRVALE změnit nastavení (slova jako "nastav", "změň", "odteď").
 - START: Spustit agenta.
 - STOP: Zastavit agenta.
-- ANALYZE_WITH_PROMPT: Uživatel se ptá na informace o trhu, chce shrnutí, nebo dává specifický pokyn pro analýzu dat (např. "jak vypadá trh?", "vypiš mi...", "jsou tam nějaké levné byty?", "co si myslíš o...").
+- SEARCH: Uživatel VÝSLOVNĚ žádá o nové vyhledání, stažení dat nebo průzkum trhu (slova jako "najdi", "vyhledej", "koukni se", "co je nového", "udělej sken").
+- CHAT: Vše ostatní. Běžná konverzace, dotazy na aktuální nastavení, nebo obecné dotazy, které NEVYŽADUJÍ stahování nových dat (např. "jaké je nastavení?", "ahoj", "co umíš?", "napiš mi básničku").
 
 Parametry: location (string), min_area (int), interval (int).
 
-Příklad 1: "Hledej v Brně byty od 60m2" -> {"command": "UPDATE_CONFIG", "parameters": {"location": "Brno", "min_area": 60}}
-Příklad 2: "Pošli mi teď nabídky z Prahy" -> {"command": "RUN_ONCE", "parameters": {"location": "Praha"}}
-Příklad 3: "Vypiš mi krátké shrnutí jak vypadá trh" -> {"command": "ANALYZE_WITH_PROMPT", "parameters": {}}
-Příklad 4: "Jsou v Ostravě nějaké byty do 15000?" -> {"command": "ANALYZE_WITH_PROMPT", "parameters": {"location": "Ostrava"}}
+Příklad 1: "Nastav lokalitu na Brno" -> {"command": "UPDATE_CONFIG", "parameters": {"location": "Brno"}}
+Příklad 2: "Najdi mi byty v Praze" -> {"command": "SEARCH", "parameters": {"location": "Praha"}}
+Příklad 3: "Jaké je tvé nastavení?" -> {"command": "CHAT", "parameters": {}}
+Příklad 4: "Vypiš mi krátké shrnutí jak vypadá trh" -> {"command": "SEARCH", "parameters": {}} (implikuje potřebu dat)
+Příklad 5: "Ahoj" -> {"command": "CHAT", "parameters": {}}
 
 Vrať POUZE validní JSON bez dalšího textu."""
 
@@ -173,13 +173,41 @@ Vrať POUZE validní JSON bez dalšího textu."""
         
         if response.status_code == 200:
             content = response.json().get("analysis", "")
-            # Očištění od markdownu, pokud tam je
             content = content.replace("```json", "").replace("```", "").strip()
             import json
             return json.loads(content)
     except Exception as e:
         print(f"Chyba při interpretaci záměru: {e}")
         return None
+
+def chat_with_llm(user_message):
+    """Běžná konverzace s LLM s kontextem agenta (bez scrapingu)"""
+    system_prompt = f"""Jsi realitní agent.
+Aktuální konfigurace:
+- Lokalita: {config['LOCATION']}
+- Min. plocha: {config['MIN_AREA']} m2
+- Interval: {config['INTERVAL']} s
+- Stav: {'Běží' if config['RUNNING'] else 'Zastaven'}
+
+Odpovídej na dotazy uživatele. 
+Pokud se uživatel ptá na konkrétní nabídky nebo aktuální stav trhu, UPOZORNI HO, že nemáš aktuální data a musí použít příkaz "najdi" nebo "vyhledej", aby jsi provedl nový průzkum."""
+
+    try:
+        response = requests.post(
+            f"{AI_ANALYZER_URL}/analyze",
+            json={
+                "prompt": user_message,
+                "context": system_prompt,
+                "model": "gpt-4o",
+                "temperature": 0.5
+            },
+            timeout=30
+        )
+        if response.status_code == 200:
+            return response.json().get("analysis", "Chyba komunikace.")
+        return "Chyba AI služby."
+    except Exception as e:
+        return f"Chyba: {e}"
 
 def analyze_custom_query(listings, user_query, location):
     """Analýza nabídek na základě specifického dotazu uživatele"""
