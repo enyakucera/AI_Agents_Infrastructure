@@ -1,5 +1,6 @@
 import os
 import time
+import json
 import requests
 import threading
 from flask import Flask, request, jsonify
@@ -250,13 +251,24 @@ def run_api_server():
 
 def scrape_listings_with_params(location):
     """Volá scraper service pro získání nabídek (s parametrem)"""
-    urls = [
-        f"https://www.sreality.cz/hledani/pronajem/byty?region={location}",
-        f"https://www.bezrealitky.cz/vypis/nabidka-pronajem/byt/{location}",
-        f"https://reality.idnes.cz/s/pronajem/byty/{location}/",
-        f"https://reality.bazos.cz/inzeraty/{location}-byt/",
-        f"https://www.reality.cz/hledani/byty/pronajem/?kde={location}"
-    ]
+    # Načtení URL šablon ze souboru sources.json
+    try:
+        with open("sources.json", "r", encoding="utf-8") as f:
+            url_templates = json.load(f)
+    except FileNotFoundError:
+        print("Soubor sources.json nenalezen, používám výchozí nastavení.")
+        url_templates = [
+            "https://www.sreality.cz/hledani/pronajem/byty?region={location}",
+            "https://www.bezrealitky.cz/vypis/nabidka-pronajem/byt/{location}",
+            "https://reality.idnes.cz/s/pronajem/byty/{location}/",
+            "https://reality.bazos.cz/inzeraty/{location}-byt/"
+        ]
+    except Exception as e:
+        print(f"Chyba při načítání sources.json: {e}")
+        return []
+
+    # Nahrazení {location} v URL
+    urls = [url.format(location=location) for url in url_templates]
     
     try:
         response = requests.post(

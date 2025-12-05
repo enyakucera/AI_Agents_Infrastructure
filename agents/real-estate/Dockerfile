@@ -6,5 +6,6 @@ COPY requirements.txt .
 RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
 COPY agent.py .
+COPY sources.json .
 
 CMD ["python", "-u", "agent.py"]

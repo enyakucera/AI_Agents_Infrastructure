@@ -1,0 +1,7 @@
+[
+    "https://www.sreality.cz/hledani/pronajem/byty?region={location}",
+    "https://www.bezrealitky.cz/vypis/nabidka-pronajem/byt/{location}",
+    "https://reality.idnes.cz/s/pronajem/byty/{location}/",
+    "https://reality.bazos.cz/inzeraty/{location}-byt/",
+    "https://www.reality.cz/hledani/byty/pronajem/?kde={location}"
+]

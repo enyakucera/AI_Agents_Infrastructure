@@ -23,3 +23,5 @@ services:
       - ai-agents-network
     ports:
       - "5005:5005"
+    volumes:
+      - ./sources.json:/app/sources.json
