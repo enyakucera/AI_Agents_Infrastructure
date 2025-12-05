@@ -254,7 +254,8 @@ def scrape_listings_with_params(location):
         f"https://www.sreality.cz/hledani/pronajem/byty?region={location}",
         f"https://www.bezrealitky.cz/vypis/nabidka-pronajem/byt/{location}",
         f"https://reality.idnes.cz/s/pronajem/byty/{location}/",
-        f"https://reality.bazos.cz/inzeraty/{location}-byt/"
+        f"https://reality.bazos.cz/inzeraty/{location}-byt/",
+        f"https://www.reality.cz/hledani/byty/pronajem/?kde={location}"
     ]
     
     try:
