@@ -26,6 +26,17 @@ WHATSAPP_URL = os.getenv("WHATSAPP_URL", "http://whatsapp:5004")
 # Flask aplikace pro ovládání agenta
 app = Flask(__name__)
 
+def load_agent_config():
+    """Načte konfiguraci agenta (prompty, model) ze souboru"""
+    try:
+        with open("agent_config.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Chyba při načítání agent_config.json: {e}")
+        return {}
+
+agent_config = load_agent_config()
+
 @app.route('/status', methods=['GET'])
 def get_status():
     return jsonify({
@@ -142,7 +153,8 @@ def handle_prompt():
 
 def interpret_intent(user_message):
     """Převod přirozeného jazyka na strukturovaný příkaz pomocí AI"""
-    system_prompt = """Jsi řídicí systém pro realitního agenta. Tvým úkolem je klasifikovat vstup uživatele.
+    # Načtení promptu z konfigurace nebo použití defaultu
+    system_prompt = agent_config.get("prompts", {}).get("interpret_intent", """Jsi řídicí systém pro realitního agenta. Tvým úkolem je klasifikovat vstup uživatele.
 Dostupné příkazy:
 - UPDATE_CONFIG: Uživatel chce TRVALE změnit nastavení (slova jako "nastav", "změň", "odteď").
 - START: Spustit agenta.
@@ -158,7 +170,7 @@ Příklad 3: "Jaké je tvé nastavení?" -> {"command": "CHAT", "parameters": {}
 Příklad 4: "Vypiš mi krátké shrnutí jak vypadá trh" -> {"command": "SEARCH", "parameters": {}} (implikuje potřebu dat)
 Příklad 5: "Ahoj" -> {"command": "CHAT", "parameters": {}}
 
-Vrať POUZE validní JSON bez dalšího textu."""
+Vrať POUZE validní JSON bez dalšího textu.""")
 
     try:
         response = requests.post(
@@ -166,7 +178,7 @@ Vrať POUZE validní JSON bez dalšího textu."""
             json={
                 "prompt": f"Uživatel říká: '{user_message}'",
                 "context": system_prompt,
-                "model": "gpt-4o",
+                "model": agent_config.get("model", "gpt-4o"),
                 "temperature": 0.1
             },
             timeout=10
@@ -183,15 +195,22 @@ Vrať POUZE validní JSON bez dalšího textu."""
 
 def chat_with_llm(user_message):
     """Běžná konverzace s LLM s kontextem agenta (bez scrapingu)"""
-    system_prompt = f"""Jsi realitní agent.
+    prompt_template = agent_config.get("prompts", {}).get("chat_system", """Jsi realitní agent.
 Aktuální konfigurace:
-- Lokalita: {config['LOCATION']}
-- Min. plocha: {config['MIN_AREA']} m2
-- Interval: {config['INTERVAL']} s
-- Stav: {'Běží' if config['RUNNING'] else 'Zastaven'}
+- Lokalita: {location}
+- Min. plocha: {min_area} m2
+- Interval: {interval} s
+- Stav: {status}
 
 Odpovídej na dotazy uživatele. 
-Pokud se uživatel ptá na konkrétní nabídky nebo aktuální stav trhu, UPOZORNI HO, že nemáš aktuální data a musí použít příkaz "najdi" nebo "vyhledej", aby jsi provedl nový průzkum."""
+Pokud se uživatel ptá na konkrétní nabídky nebo aktuální stav trhu, UPOZORNI HO, že nemáš aktuální data a musí použít příkaz "najdi" nebo "vyhledej", aby jsi provedl nový průzkum.""")
+
+    system_prompt = prompt_template.format(
+        location=config['LOCATION'],
+        min_area=config['MIN_AREA'],
+        interval=config['INTERVAL'],
+        status='Běží' if config['RUNNING'] else 'Zastaven'
+    )
 
     try:
         response = requests.post(
@@ -199,7 +218,7 @@ Pokud se uživatel ptá na konkrétní nabídky nebo aktuální stav trhu, UPOZO
             json={
                 "prompt": user_message,
                 "context": system_prompt,
-                "model": "gpt-4o",
+                "model": agent_config.get("model", "gpt-4o"),
                 "temperature": 0.5
             },
             timeout=30
@@ -218,20 +237,26 @@ def analyze_custom_query(listings, user_query, location):
         for item in listings[:50]
     ])
     
-    prompt = f"""Mám následující seznam nabídek pronájmu bytů v lokalitě {location}:
+    prompt_template = agent_config.get("prompts", {}).get("analyze_custom_query", """Mám následující seznam nabídek pronájmu bytů v lokalitě {location}:
 
 {listings_text}
 
 Uživatel se ptá: "{user_query}"
 
-Odpověz uživateli přímo na jeho otázku na základě poskytnutých dat. Buď stručný a věcný."""
+Odpověz uživateli přímo na jeho otázku na základě poskytnutých dat. Buď stručný a věcný.""")
+
+    prompt = prompt_template.format(
+        location=location,
+        listings_text=listings_text,
+        user_query=user_query
+    )
 
     try:
         response = requests.post(
             f"{AI_ANALYZER_URL}/analyze",
             json={
                 "prompt": prompt,
-                "model": "gpt-4o",
+                "model": agent_config.get("model", "gpt-4o"),
                 "temperature": 0.2,
                 "max_tokens": 1000
             },
@@ -275,7 +300,7 @@ def scrape_listings_with_params(location):
             f"{SCRAPER_URL}/scrape",
             json={
                 "urls": urls,
-                "keywords": ["byt"]
+                "keywords": agent_config.get("keywords", ["byt"])
             },
             timeout=30
         )
@@ -304,7 +329,7 @@ def analyze_listings_with_params(listings, location, min_area):
         for item in listings[:50]  # omezit na 50 nabídek
     ])
     
-    prompt = f"""Vyber nejlepší nabídky pronájmu bytů v {location} z následujícího seznamu:
+    prompt_template = agent_config.get("prompts", {}).get("analyze_listings", """Vyber nejlepší nabídky pronájmu bytů v {location} z následujícího seznamu:
 
 {listings_text}
 
@@ -313,14 +338,20 @@ Kritéria:
 - Vhodné pro dlouhodobý pronájem
 - Přijatelná cena
 
-Vrať stručný seznam TOP 5 nejlepších nabídek s odůvodněním."""
+Vrať stručný seznam TOP 5 nejlepších nabídek s odůvodněním.""")
+
+    prompt = prompt_template.format(
+        location=location,
+        listings_text=listings_text,
+        min_area=min_area
+    )
     
     try:
         response = requests.post(
             f"{AI_ANALYZER_URL}/analyze",
             json={
                 "prompt": prompt,
-                "model": "gpt-4o",
+                "model": agent_config.get("model", "gpt-4o"),
                 "temperature": 0.2,
                 "max_tokens": 1000
             },

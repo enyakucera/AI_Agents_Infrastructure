@@ -25,3 +25,4 @@ services:
       - "5005:5005"
     volumes:
       - ./sources.json:/app/sources.json
+      - ./agent_config.json:/app/agent_config.json
